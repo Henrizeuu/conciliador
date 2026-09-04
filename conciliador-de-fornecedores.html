@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conciliador de Fornecedores</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#16233A;
+    --paper:#F5F3EE;
+    --panel:#FFFFFF;
+    --line:#DCD8CB;
+    --muted:#6B6656;
+    --ok:#1F6F5C;
+    --ok-bg:#E7F1EE;
+    --open:#A9781F;
+    --open-bg:#FBF1DD;
+    --alert:#A23B2E;
+    --alert-bg:#FBEAE7;
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.5;
+    padding:32px 20px 80px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+
+  header.top{
+    border-bottom:2px solid var(--ink);
+    padding-bottom:18px;
+    margin-bottom:28px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  header.top h1{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:28px;
+    letter-spacing:0.2px;
+    margin:0 0 6px;
+  }
+  header.top p{
+    margin:0;
+    color:var(--muted);
+    font-size:14px;
+    max-width:46ch;
+  }
+  .badge-count{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--muted);
+    white-space:nowrap;
+  }
+
+  /* ---- upload zone ---- */
+  #dropzone{
+    border:1.5px dashed #B8B2A0;
+    background:var(--panel);
+    border-radius:2px;
+    padding:46px 24px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  #dropzone.drag{
+    border-color:var(--ink);
+    background:#FBFAF7;
+  }
+  #dropzone h2{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:19px;
+    margin:0 0 8px;
+  }
+  #dropzone p{
+    margin:0;
+    color:var(--muted);
+    font-size:13.5px;
+  }
+  #dropzone input{display:none;}
+  #dz-error{
+    margin-top:14px;
+    color:var(--alert);
+    font-size:13px;
+    display:none;
+  }
+
+  /* ---- results header ---- */
+  #results{display:none;}
+  .file-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:18px;
+  }
+  .file-bar .fname{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--muted);
+  }
+  .file-bar .actions{display:flex; gap:8px;}
+  button.btn{
+    font-family:var(--sans);
+    font-size:13.5px;
+    padding:9px 16px;
+    border-radius:2px;
+    border:1px solid var(--ink);
+    background:var(--panel);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  button.btn:hover{background:#EFEDE6;}
+  button.btn.primary{
+    background:var(--ink);
+    color:#fff;
+  }
+  button.btn.primary:hover{background:#0F1A2C;}
+
+  select#fornecedorSel{
+    font-family:var(--sans);
+    font-size:13.5px;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:2px;
+    background:var(--panel);
+    color:var(--ink);
+    max-width:100%;
+  }
+
+  /* ---- balance strip ---- */
+  .balance-strip{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    border-top:1px solid var(--ink);
+    border-bottom:1px solid var(--ink);
+    margin-bottom:24px;
+  }
+  .balance-strip .cell{
+    padding:14px 16px;
+    border-left:1px solid var(--line);
+  }
+  .balance-strip .cell:first-child{border-left:none;}
+  .balance-strip .cell .lbl{
+    font-size:11.5px;
+    color:var(--muted);
+    margin-bottom:5px;
+  }
+  .balance-strip .cell .val{
+    font-family:var(--mono);
+    font-size:18px;
+  }
+  .val.ok{color:var(--ok);}
+  .val.open{color:var(--open);}
+  .val.alert{color:var(--alert);}
+
+  /* ---- tabs (ledger index) ---- */
+  .tabs{
+    display:flex;
+    gap:0;
+    border-bottom:1px solid var(--line);
+    margin-bottom:0;
+    flex-wrap:wrap;
+  }
+  .tab{
+    font-size:13.5px;
+    padding:10px 16px;
+    cursor:pointer;
+    color:var(--muted);
+    border-bottom:2px solid transparent;
+    margin-bottom:-1px;
+    user-select:none;
+  }
+  .tab.active{
+    color:var(--ink);
+    border-bottom-color:var(--ink);
+    font-weight:600;
+  }
+  .tab .n{font-family:var(--mono); font-size:12px;}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-top:none;
+    padding:18px 20px 22px;
+  }
+  .panel .note{
+    font-size:13px;
+    color:var(--muted);
+    margin:0 0 14px;
+    line-height:1.6;
+  }
+  .empty-msg{
+    font-size:14px;
+    color:var(--ok);
+    padding:20px 4px;
+  }
+
+  input#searchBox{
+    width:100%;
+    font-family:var(--sans);
+    font-size:13.5px;
+    padding:9px 11px;
+    border:1px solid var(--line);
+    border-radius:2px;
+    margin-bottom:14px;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  thead th{
+    text-align:left;
+    font-size:11px;
+    text-transform:none;
+    color:var(--muted);
+    font-weight:600;
+    border-bottom:1px solid var(--ink);
+    padding:7px 8px;
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:8px;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+  }
+  tbody tr:hover{background:#FBFAF7;}
+  td.num, th.num{font-family:var(--mono); text-align:right; white-space:nowrap;}
+  td.small{font-size:11.5px; color:var(--muted);}
+  .status-pill{
+    display:inline-block;
+    font-size:11px;
+    padding:2px 8px;
+    border-radius:2px;
+    white-space:nowrap;
+  }
+  .status-pill.ok{background:var(--ok-bg); color:var(--ok);}
+  .status-pill.open{background:var(--open-bg); color:var(--open);}
+  .status-pill.alert{background:var(--alert-bg); color:var(--alert);}
+
+  .table-scroll{max-height:520px; overflow:auto; border:1px solid var(--line);}
+  .table-scroll table thead th{position:sticky; top:0; background:var(--panel);}
+  .table-scroll{border:none;}
+
+  footer.credit{
+    margin-top:40px;
+    font-size:11.5px;
+    color:var(--muted);
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>Conciliador de Fornecedores</h1>
+      <p>Solte o extrato de conta corrente por fornecedor e ele casa cada nota fiscal com seus pagamentos sozinho — mesmo quando o número da duplicata não bate com o da nota.</p>
+    </div>
+    <div class="badge-count" id="topBadge"></div>
+  </header>
+
+  <div id="dropzone">
+    <input type="file" id="fileInput" accept=".csv,text/csv">
+    <h2>Solte o arquivo .csv aqui, ou clique para escolher</h2>
+    <p>Mesmo formato do extrato de fornecedor (colunas Data, Histórico, Débito, Crédito...)</p>
+    <div id="dz-error"></div>
+  </div>
+
+  <div id="results">
+    <div class="file-bar">
+      <div>
+        <div class="fname" id="fileName"></div>
+      </div>
+      <div class="actions">
+        <select id="fornecedorSel"></select>
+        <button class="btn" id="resetBtn">Trocar arquivo</button>
+        <button class="btn primary" id="downloadBtn">Baixar planilha (.xlsx)</button>
+      </div>
+    </div>
+
+    <div class="balance-strip" id="balanceStrip"></div>
+
+    <div class="tabs" id="tabs"></div>
+    <div class="panel" id="panelContent"></div>
+  </div>
+
+  <footer class="credit">Processamento local no seu navegador — o arquivo não é enviado para nenhum servidor.</footer>
+</div>
+
+<script>
+/* =========================================================
+   MOTOR DE CONCILIAÇÃO
+   ========================================================= */
+function brNum(s){
+  if (s===undefined||s===null) return 0;
+  s = String(s).trim();
+  if (s==='') return 0;
+  s = s.replace(/\./g,'').replace(',', '.');
+  const v = parseFloat(s);
+  return isNaN(v) ? 0 : v;
+}
+function parseBrDate(s){
+  if(!s) return null;
+  const m = String(s).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(!m) return null;
+  return new Date(Date.UTC(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1])));
+}
+function fmtDate(d){
+  if(!d) return '';
+  const dd = String(d.getUTCDate()).padStart(2,'0');
+  const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+  return dd+'/'+mm+'/'+d.getUTCFullYear();
+}
+function fmtMoney(v){
+  return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function parseCSVText(text){
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim().length>0);
+  if(lines.length===0) return [];
+  const headers = lines[0].split(';').map(h=>h.trim());
+  const rows = [];
+  for(let i=1;i<lines.length;i++){
+    const cols = lines[i].split(';');
+    const row = {};
+    headers.forEach((h,idx)=>{ row[h] = (cols[idx]!==undefined?cols[idx]:'').trim(); });
+    rows.push(row);
+  }
+  return rows;
+}
+function parseHistorico(h){
+  h = h || '';
+  let m = h.match(/^NFE nr (\d+) ser \S+ de (.+)$/);
+  if(m) return {tipo:'NFE', nf:m[1], fornecedor:m[2].trim()};
+  m = h.match(/^Pagamento Dupl (\S+)(?: da NF(\d+))? (.+)$/);
+  if(m){
+    const duplRaw = m[1];
+    const baseM = duplRaw.match(/^(\d+)/);
+    return {tipo:'PAGAMENTO', duplRaw, duplBase: baseM?baseM[1]:null, daNf: m[2]||null, fornecedor:m[3].trim()};
+  }
+  return {tipo:'OUTRO'};
+}
+
+function reconcile(rows){
+  const byFornecedor = {};
+  for(const row of rows){
+    const hist = row['Histórico'] || row['Historico'] || '';
+    const parsed = parseHistorico(hist);
+    if(parsed.tipo==='NFE'){
+      const key = parsed.fornecedor;
+      if(!byFornecedor[key]) byFornecedor[key] = {invoices:[], payments:[]};
+      byFornecedor[key].invoices.push({
+        nf: parsed.nf,
+        data: parseBrDate(row['Data']),
+        valor: Math.round(brNum(row['Crédito']||row['Credito'])*100)/100,
+        lancto: row['Lançamento']||row['Lancamento']||'',
+        fornecedor: key, paid:0, matches:[]
+      });
+    } else if(parsed.tipo==='PAGAMENTO'){
+      const key = parsed.fornecedor;
+      if(!byFornecedor[key]) byFornecedor[key] = {invoices:[], payments:[]};
+      byFornecedor[key].payments.push({
+        duplRaw: parsed.duplRaw, duplBase: parsed.duplBase, daNf: parsed.daNf,
+        data: parseBrDate(row['Data']),
+        valor: Math.round(brNum(row['Débito']||row['Debito'])*100)/100,
+        lancto: row['Lançamento']||row['Lancamento']||'',
+        fornecedor: key
+      });
+    }
+  }
+
+  const result = {};
+  for(const fornecedor of Object.keys(byFornecedor)){
+    const {invoices, payments} = byFornecedor[fornecedor];
+    invoices.sort((a,b)=> (a.data&&b.data)? a.data-b.data : 0);
+    payments.sort((a,b)=> (a.data&&b.data)? a.data-b.data : 0);
+    const invByNf = {};
+    invoices.forEach(inv=>{ invByNf[inv.nf]=inv; });
+    const nfSet = new Set(invoices.map(i=>i.nf));
+    const nfOrder = invoices.map(i=>i.nf);
+    const rem = nf => Math.round((invByNf[nf].valor - invByNf[nf].paid)*100)/100;
+
+    const unresolved = [];
+    for(const p of payments){
+      let target = null;
+      if(p.daNf && nfSet.has(p.daNf)) target = p.daNf;
+      else if(p.duplBase && nfSet.has(p.duplBase)) target = p.duplBase;
+      if(target){
+        invByNf[target].paid = Math.round((invByNf[target].paid + p.valor)*100)/100;
+        invByNf[target].matches.push({lancto:p.lancto, data:fmtDate(p.data), valor:p.valor, dupl:p.duplRaw, metodo:'Referência direta (Dupl→NF)'});
+      } else unresolved.push(p);
+    }
+
+    const groups = {};
+    for(const p of unresolved){
+      const b = p.duplBase || ('_'+p.duplRaw);
+      if(!groups[b]) groups[b]=[];
+      groups[b].push(p);
+    }
+    const stillUnresolved = [];
+    for(const base of Object.keys(groups)){
+      const grp = groups[base];
+      const total = Math.round(grp.reduce((s,p)=>s+p.valor,0)*100)/100;
+      // a nota tem que existir na data da PRIMEIRA parcela do grupo — não dá pra pagar algo que ainda não foi emitido
+      const earliestPayDate = grp.reduce((min,p)=> (p.data && (!min || p.data<min)) ? p.data : min, null);
+      const candidates = nfOrder.filter(nf=> rem(nf)>0.01 && (!invByNf[nf].data || !earliestPayDate || invByNf[nf].data.getTime() <= earliestPayDate.getTime()));
+      const exact = candidates.filter(nf=>Math.abs(rem(nf)-total)<0.02);
+      if(exact.length>0){
+        const nf = exact[0];
+        for(const p of grp){
+          invByNf[nf].paid = Math.round((invByNf[nf].paid + p.valor)*100)/100;
+          invByNf[nf].matches.push({lancto:p.lancto, data:fmtDate(p.data), valor:p.valor, dupl:p.duplRaw, metodo:'Grupo de parcelas '+base+' (soma='+total.toFixed(2)+') casado por valor'});
+        }
+      } else stillUnresolved.push(...grp);
+    }
+
+    stillUnresolved.sort((a,b)=> (a.data&&b.data)? a.data-b.data : 0);
+    const orphans = [];
+    for(const p of stillUnresolved){
+      // a nota tem que existir na data do pagamento — não dá pra pagar algo que ainda não foi emitido
+      const candidates = nfOrder.filter(nf=> rem(nf)>0.01 && (!invByNf[nf].data || !p.data || invByNf[nf].data.getTime() <= p.data.getTime()));
+      const exact = candidates.filter(nf=>Math.abs(rem(nf)-p.valor)<0.02);
+      if(exact.length>0){
+        const nf = exact[0];
+        invByNf[nf].paid = Math.round((invByNf[nf].paid + p.valor)*100)/100;
+        invByNf[nf].matches.push({lancto:p.lancto, data:fmtDate(p.data), valor:p.valor, dupl:p.duplRaw, metodo:'Valor exato (individual)'});
+      } else if(candidates.length>0){
+        const nf = candidates[0];
+        invByNf[nf].paid = Math.round((invByNf[nf].paid + p.valor)*100)/100;
+        invByNf[nf].matches.push({lancto:p.lancto, data:fmtDate(p.data), valor:p.valor, dupl:p.duplRaw, metodo:'Aproximado (FIFO) — revisar'});
+      } else orphans.push(p);
+    }
+    result[fornecedor] = {invoices, orphans};
+  }
+  return result;
+}
+
+/* =========================================================
+   ESTADO / UI
+   ========================================================= */
+let RESULT = null;      // {fornecedor: {invoices, orphans}}
+let CURRENT_FORNECEDOR = null;
+let CURRENT_TAB = 'resumo';
+let CURRENT_FILE_NAME = '';
+
+const dz = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const dzError = document.getElementById('dz-error');
+const resultsEl = document.getElementById('results');
+
+dz.addEventListener('click', ()=> fileInput.click());
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+dz.addEventListener('drop', e=>{
+  e.preventDefault(); dz.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{
+  if(e.target.files.length) handleFile(e.target.files[0]);
+});
+
+function handleFile(file){
+  dzError.style.display='none';
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const rows = parseCSVText(e.target.result);
+      if(rows.length===0) throw new Error('Não encontrei linhas de dados nesse arquivo.');
+      const result = reconcile(rows);
+      if(Object.keys(result).length===0) throw new Error('Não encontrei nenhuma linha de "NFE" ou "Pagamento Dupl" no Histórico — confira se é o formato certo de extrato.');
+      RESULT = result;
+      CURRENT_FILE_NAME = file.name;
+      CURRENT_FORNECEDOR = Object.keys(result)[0];
+      CURRENT_TAB = 'resumo';
+      renderResults();
+    }catch(err){
+      dzError.textContent = 'Não consegui processar o arquivo: ' + err.message;
+      dzError.style.display='block';
+    }
+  };
+  reader.onerror = function(){
+    dzError.textContent = 'Não consegui ler o arquivo. Tente novamente.';
+    dzError.style.display='block';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  RESULT = null;
+  fileInput.value = '';
+  resultsEl.style.display = 'none';
+  dz.style.display = 'block';
+  dzError.style.display = 'none';
+});
+
+document.getElementById('downloadBtn').addEventListener('click', exportXLSX);
+
+function classify(inv){
+  const saldo = Math.round((inv.valor - inv.paid)*100)/100;
+  if(saldo > 0.01) return 'aberto';
+  if(saldo < -0.01) return 'maior';
+  return 'quitada';
+}
+
+function renderResults(){
+  dz.style.display = 'none';
+  resultsEl.style.display = 'block';
+  document.getElementById('fileName').textContent = CURRENT_FILE_NAME;
+
+  // fornecedor selector
+  const sel = document.getElementById('fornecedorSel');
+  sel.innerHTML = '';
+  const fornecedores = Object.keys(RESULT);
+  fornecedores.forEach(f=>{
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = f;
+    sel.appendChild(opt);
+  });
+  sel.value = CURRENT_FORNECEDOR;
+  sel.style.display = fornecedores.length>1 ? 'inline-block' : 'none';
+  sel.onchange = ()=>{ CURRENT_FORNECEDOR = sel.value; CURRENT_TAB='resumo'; renderResults(); };
+
+  let totalNotas=0, totalPagas=0;
+  fornecedores.forEach(f=>{ totalNotas += RESULT[f].invoices.length; });
+  document.getElementById('topBadge').textContent = totalNotas + ' nota' + (totalNotas!==1?'s':'') + (fornecedores.length>1 ? ' · '+fornecedores.length+' fornecedores' : '');
+
+  renderBalanceStrip();
+  renderTabs();
+  renderPanel();
+}
+
+function renderBalanceStrip(){
+  const {invoices, orphans} = RESULT[CURRENT_FORNECEDOR];
+  const totalValor = round2(invoices.reduce((s,v)=>s+v.valor,0));
+  const totalPago = round2(invoices.reduce((s,v)=>s+v.paid,0));
+  const aberto = invoices.filter(v=>classify(v)==='aberto');
+  const maior = invoices.filter(v=>classify(v)==='maior');
+  const saldoAberto = round2(aberto.reduce((s,v)=>s+(v.valor-v.paid),0));
+  const saldoMaior = round2(maior.reduce((s,v)=>s+(v.paid-v.valor),0));
+
+  const strip = document.getElementById('balanceStrip');
+  strip.innerHTML = `
+    <div class="cell"><div class="lbl">Notas no período</div><div class="val">${invoices.length}</div></div>
+    <div class="cell"><div class="lbl">Valor das notas</div><div class="val">${fmtMoney(totalValor)}</div></div>
+    <div class="cell"><div class="lbl">Valor pago</div><div class="val">${fmtMoney(totalPago)}</div></div>
+    <div class="cell"><div class="lbl">Falta pagar</div><div class="val ${aberto.length?'open':'ok'}">${fmtMoney(saldoAberto)}</div></div>
+    <div class="cell"><div class="lbl">Pago a mais</div><div class="val ${maior.length?'alert':'ok'}">${fmtMoney(saldoMaior)}</div></div>
+  `;
+}
+
+function renderTabs(){
+  const {invoices, orphans} = RESULT[CURRENT_FORNECEDOR];
+  const aberto = invoices.filter(v=>classify(v)==='aberto');
+  const maior = invoices.filter(v=>classify(v)==='maior');
+  const revisar = invoices.filter(v=>v.matches.some(m=>m.metodo.indexOf('revisar')>=0 || m.metodo.indexOf('FIFO')>=0));
+
+  const defs = [
+    {id:'resumo', label:'Resumo'},
+    {id:'aberto', label:'A pagar', n:aberto.length},
+    {id:'maior', label:'Pago a mais', n:maior.length},
+    {id:'revisar', label:'A revisar', n:revisar.length},
+    {id:'tudo', label:'Todas as notas', n:invoices.length},
+    {id:'orfaos', label:'Não identificados', n:orphans.length},
+  ];
+  const tabs = document.getElementById('tabs');
+  tabs.innerHTML = defs.map(d =>
+    `<div class="tab ${d.id===CURRENT_TAB?'active':''}" data-tab="${d.id}">${d.label}${d.n!==undefined?' <span class="n">('+d.n+')</span>':''}</div>`
+  ).join('');
+  tabs.querySelectorAll('.tab').forEach(el=>{
+    el.addEventListener('click', ()=>{ CURRENT_TAB = el.dataset.tab; renderTabs(); renderPanel(); });
+  });
+}
+
+function round2(v){ return Math.round(v*100)/100; }
+
+function renderPanel(){
+  const panel = document.getElementById('panelContent');
+  const {invoices, orphans} = RESULT[CURRENT_FORNECEDOR];
+
+  if(CURRENT_TAB==='resumo'){
+    const aberto = invoices.filter(v=>classify(v)==='aberto');
+    const maior = invoices.filter(v=>classify(v)==='maior');
+    const quitadas = invoices.filter(v=>classify(v)==='quitada');
+    panel.innerHTML = `
+      <p class="note">
+        A conciliação roda em 3 camadas: primeiro casa pagamentos que citam a nota diretamente;
+        depois soma parcelas de uma mesma duplicata e compara com notas em aberto; por fim,
+        casa o que sobrou pelo valor exato, ou pela nota mais antiga em aberto (marcado como
+        "a revisar"). Pagamentos que não encontram nenhuma nota ficam em "Não identificados"
+        — geralmente é dívida de antes do período do arquivo.
+      </p>
+      <table>
+        <tbody>
+          <tr><td>Notas quitadas corretamente</td><td class="num">${quitadas.length}</td></tr>
+          <tr><td>Notas em aberto (falta pagar)</td><td class="num">${aberto.length}</td></tr>
+          <tr><td>Notas pagas a mais</td><td class="num">${maior.length}</td></tr>
+          <tr><td>Pagamentos não identificados neste arquivo</td><td class="num">${orphans.length} (${fmtMoney(round2(orphans.reduce((s,o)=>s+o.valor,0)))})</td></tr>
+        </tbody>
+      </table>
+    `;
+    return;
+  }
+
+  if(CURRENT_TAB==='aberto'){
+    const rows = invoices.filter(v=>classify(v)==='aberto').sort((a,b)=>a.data-b.data);
+    panel.innerHTML = tableOrEmpty(rows, 'Nenhuma nota em aberto — tudo pago. ✔', renderTablePagar);
+    return;
+  }
+  if(CURRENT_TAB==='maior'){
+    const rows = invoices.filter(v=>classify(v)==='maior').sort((a,b)=>a.data-b.data);
+    panel.innerHTML = tableOrEmpty(rows, 'Nenhuma nota paga a mais. ✔', renderTableMaior);
+    return;
+  }
+  if(CURRENT_TAB==='revisar'){
+    const rows = invoices.filter(v=>v.matches.some(m=>m.metodo.indexOf('revisar')>=0 || m.metodo.indexOf('FIFO')>=0)).sort((a,b)=>a.data-b.data);
+    panel.innerHTML = '<p class="note">Notas cujo casamento não teve referência clara nem valor exatamente batido — foram associadas à nota mais antiga em aberto. Vale conferir manualmente.</p>' +
+      tableOrEmpty(rows, 'Nenhum caso precisou de casamento aproximado. ✔', renderTableAuditoria);
+    return;
+  }
+  if(CURRENT_TAB==='tudo'){
+    panel.innerHTML = `<input type="text" id="searchBox" placeholder="Buscar por número da nota...">` +
+      `<div id="tudoTableWrap"></div>`;
+    const allRows = invoices.slice().sort((a,b)=>a.data-b.data);
+    const wrap = ()=> document.getElementById('tudoTableWrap');
+    wrap().innerHTML = renderTableAuditoria(allRows);
+    document.getElementById('searchBox').addEventListener('input', e=>{
+      const q = e.target.value.trim().toLowerCase();
+      const filtered = q ? allRows.filter(v=>v.nf.toLowerCase().includes(q)) : allRows;
+      wrap().innerHTML = renderTableAuditoria(filtered);
+    });
+    return;
+  }
+  if(CURRENT_TAB==='orfaos'){
+    panel.innerHTML = '<p class="note">Pagamentos sem nenhuma nota correspondente em aberto neste arquivo. Se o total bater com o "saldo anterior" do extrato, é dívida de antes do período — não é erro. Se não bater, vale investigar.</p>' +
+      tableOrEmpty(orphans.slice().sort((a,b)=>(a.data&&b.data)?a.data-b.data:0), 'Nenhum pagamento ficou sem nota. ✔', renderTableOrfaos);
+    return;
+  }
+}
+
+function tableOrEmpty(rows, emptyMsg, renderFn){
+  if(rows.length===0) return `<div class="empty-msg">${emptyMsg}</div>`;
+  return renderFn(rows);
+}
+
+function renderTablePagar(rows){
+  let html = `<div class="table-scroll"><table><thead><tr>
+    <th>Nota</th><th>Data</th><th>Fornecedor</th><th class="num">Valor da nota</th><th class="num">Valor pago</th><th class="num">Saldo a pagar</th>
+  </tr></thead><tbody>`;
+  for(const v of rows){
+    html += `<tr><td>${v.nf}</td><td>${fmtDate(v.data)}</td><td class="small">${v.fornecedor}</td>
+      <td class="num">${fmtMoney(v.valor)}</td><td class="num">${fmtMoney(round2(v.paid))}</td>
+      <td class="num">${fmtMoney(round2(v.valor-v.paid))}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function renderTableMaior(rows){
+  let html = `<div class="table-scroll"><table><thead><tr>
+    <th>Nota</th><th>Data</th><th>Fornecedor</th><th class="num">Valor da nota</th><th class="num">Valor pago</th><th class="num">Pago a mais</th><th>Detalhe</th>
+  </tr></thead><tbody>`;
+  for(const v of rows){
+    const det = v.matches.map(m=>`${m.data} lanç.${m.lancto} Dupl ${m.dupl} ${fmtMoney(m.valor)}`).join('<br>');
+    html += `<tr><td>${v.nf}</td><td>${fmtDate(v.data)}</td><td class="small">${v.fornecedor}</td>
+      <td class="num">${fmtMoney(v.valor)}</td><td class="num">${fmtMoney(round2(v.paid))}</td>
+      <td class="num">${fmtMoney(round2(v.paid-v.valor))}</td><td class="small">${det}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function renderTableAuditoria(rows){
+  let html = `<div class="table-scroll"><table><thead><tr>
+    <th>Nota</th><th>Data</th><th class="num">Valor da nota</th><th class="num">Valor pago</th><th class="num">Saldo</th><th>Status</th><th>Como foi casado</th>
+  </tr></thead><tbody>`;
+  for(const v of rows){
+    const cls = classify(v);
+    const pill = cls==='aberto' ? '<span class="status-pill open">Em aberto</span>'
+      : cls==='maior' ? '<span class="status-pill alert">Pago a mais</span>'
+      : '<span class="status-pill ok">Quitada</span>';
+    const metodos = v.matches.length ? [...new Set(v.matches.map(m=>m.metodo.replace(' — revisar','')))].join('; ') : '(sem pagamento casado)';
+    html += `<tr><td>${v.nf}</td><td>${fmtDate(v.data)}</td>
+      <td class="num">${fmtMoney(v.valor)}</td><td class="num">${fmtMoney(round2(v.paid))}</td>
+      <td class="num">${fmtMoney(round2(v.valor-v.paid))}</td><td>${pill}</td><td class="small">${metodos}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function renderTableOrfaos(rows){
+  let html = `<div class="table-scroll"><table><thead><tr>
+    <th>Data</th><th>Lançamento</th><th>Duplicata</th><th class="num">Valor</th>
+  </tr></thead><tbody>`;
+  for(const o of rows){
+    html += `<tr><td>${fmtDate(o.data)}</td><td>${o.lancto}</td><td>${o.duplRaw}</td><td class="num">${fmtMoney(o.valor)}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+/* =========================================================
+   EXPORTAÇÃO XLSX
+   ========================================================= */
+function exportXLSX(){
+  const wb = XLSX.utils.book_new();
+  const fornecedores = Object.keys(RESULT);
+  const curr = (v)=> ({t:'n', v:v, z:'#,##0.00'});
+
+  // ---- Resumo ----
+  const resumoRows = [['Conciliação de Fornecedores'], ['Gerado automaticamente'], []];
+  let grandNotas=0, grandValor=0, grandPago=0, grandAberto=0, grandMaior=0;
+  const perForn = [];
+  fornecedores.forEach(f=>{
+    const {invoices, orphans} = RESULT[f];
+    const totalValor = round2(invoices.reduce((s,v)=>s+v.valor,0));
+    const totalPago = round2(invoices.reduce((s,v)=>s+v.paid,0));
+    const aberto = invoices.filter(v=>classify(v)==='aberto');
+    const maior = invoices.filter(v=>classify(v)==='maior');
+    grandNotas += invoices.length; grandValor+=totalValor; grandPago+=totalPago;
+    grandAberto += round2(aberto.reduce((s,v)=>s+(v.valor-v.paid),0));
+    grandMaior += round2(maior.reduce((s,v)=>s+(v.paid-v.valor),0));
+    perForn.push([f, invoices.length, totalValor, totalPago, aberto.length, maior.length, orphans.length]);
+  });
+  resumoRows.push(['Total de notas', grandNotas]);
+  resumoRows.push(['Valor total das notas', round2(grandValor)]);
+  resumoRows.push(['Valor total pago', round2(grandPago)]);
+  resumoRows.push(['Total a pagar', round2(grandAberto)]);
+  resumoRows.push(['Total pago a mais', round2(grandMaior)]);
+  resumoRows.push([]);
+  resumoRows.push(['Fornecedor', 'Notas', 'Valor notas', 'Valor pago', 'Em aberto', 'Pago a mais', 'Não identificados']);
+  perForn.forEach(r=> resumoRows.push(r));
+  const wsResumo = XLSX.utils.aoa_to_sheet(resumoRows);
+  wsResumo['!cols'] = [{wch:45},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+
+  // ---- A Pagar ----
+  const aPagarRows = [['Fornecedor','Nota','Data','Valor da Nota','Valor Pago','Saldo a Pagar']];
+  fornecedores.forEach(f=>{
+    RESULT[f].invoices.filter(v=>classify(v)==='aberto').sort((a,b)=>a.data-b.data).forEach(v=>{
+      aPagarRows.push([f, v.nf, fmtDate(v.data), round2(v.valor), round2(v.paid), round2(v.valor-v.paid)]);
+    });
+  });
+  const wsAPagar = XLSX.utils.aoa_to_sheet(aPagarRows);
+  wsAPagar['!cols'] = [{wch:40},{wch:14},{wch:12},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsAPagar, 'A Pagar');
+
+  // ---- Pago a Maior ----
+  const maiorRows = [['Fornecedor','Nota','Data','Valor da Nota','Valor Pago','Pago a Mais','Detalhe dos pagamentos']];
+  fornecedores.forEach(f=>{
+    RESULT[f].invoices.filter(v=>classify(v)==='maior').sort((a,b)=>a.data-b.data).forEach(v=>{
+      const det = v.matches.map(m=>m.data+' lanç.'+m.lancto+' Dupl '+m.dupl+' R$ '+m.valor.toFixed(2)+' ['+m.metodo+']').join(' | ');
+      maiorRows.push([f, v.nf, fmtDate(v.data), round2(v.valor), round2(v.paid), round2(v.paid-v.valor), det]);
+    });
+  });
+  const wsMaior = XLSX.utils.aoa_to_sheet(maiorRows);
+  wsMaior['!cols'] = [{wch:40},{wch:14},{wch:12},{wch:13},{wch:13},{wch:13},{wch:90}];
+  XLSX.utils.book_append_sheet(wb, wsMaior, 'Pago a Maior');
+
+  // ---- Detalhe completo ----
+  const detRows = [['Fornecedor','Nota','Data','Valor da Nota','Valor Pago','Saldo','Status','Como foi casado']];
+  fornecedores.forEach(f=>{
+    RESULT[f].invoices.slice().sort((a,b)=>a.data-b.data).forEach(v=>{
+      const cls = classify(v);
+      const status = cls==='aberto' ? 'EM ABERTO' : cls==='maior' ? 'PAGO A MAIOR' : 'Quitada';
+      const metodos = v.matches.length ? [...new Set(v.matches.map(m=>m.metodo.replace(' — revisar','')))].join('; ') : '(sem pagamento casado)';
+      detRows.push([f, v.nf, fmtDate(v.data), round2(v.valor), round2(v.paid), round2(v.valor-v.paid), status, metodos]);
+    });
+  });
+  const wsDet = XLSX.utils.aoa_to_sheet(detRows);
+  wsDet['!cols'] = [{wch:40},{wch:12},{wch:12},{wch:13},{wch:13},{wch:13},{wch:14},{wch:45}];
+  XLSX.utils.book_append_sheet(wb, wsDet, 'Detalhe Completo');
+
+  // ---- Não identificados ----
+  const orfRows = [['Fornecedor','Data','Lançamento','Duplicata','Valor']];
+  fornecedores.forEach(f=>{
+    RESULT[f].orphans.slice().sort((a,b)=>(a.data&&b.data)?a.data-b.data:0).forEach(o=>{
+      orfRows.push([f, fmtDate(o.data), o.lancto, o.duplRaw, round2(o.valor)]);
+    });
+  });
+  const wsOrf = XLSX.utils.aoa_to_sheet(orfRows);
+  wsOrf['!cols'] = [{wch:40},{wch:12},{wch:14},{wch:16},{wch:13}];
+  XLSX.utils.book_append_sheet(wb, wsOrf, 'Nao Identificados');
+
+  const base = CURRENT_FILE_NAME.replace(/\.csv$/i, '') || 'conciliacao';
+  XLSX.writeFile(wb, 'conciliacao_' + base + '.xlsx');
+}
+</script>
+</body>
+</html>
